@@ -1,0 +1,7 @@
+-r requirements.txt
+ultralytics>=8.4
+opencv-python>=4.9
+lap
+fastapi
+uvicorn
+pytest

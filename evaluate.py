@@ -48,6 +48,10 @@ def main():
     p.add_argument("--tolerance", type=float, default=2.0,
                    help="max seconds between a true and a system crossing to match")
     p.add_argument("--db", default=db.DB_PATH)
+    p.add_argument("--ignore-type", action="store_true",
+                   help="match on direction only (ignore car/truck/bus labels)")
+    p.add_argument("--start-s", type=float, default=None, help="only compare crossings after this time")
+    p.add_argument("--end-s", type=float, default=None, help="only compare crossings before this time")
     args = p.parse_args()
 
     conn = db.init(args.db)
@@ -67,13 +71,30 @@ def main():
     if missing:
         raise SystemExit(f"{args.truth} is missing columns: {sorted(missing)}")
 
+    if args.start_s is not None:
+        truth = truth[truth["time_s"] >= args.start_s].reset_index(drop=True)
+        system = system[system["video_time_s"] >= args.start_s].reset_index(drop=True)
+    if args.end_s is not None:
+        truth = truth[truth["time_s"] < args.end_s].reset_index(drop=True)
+        system = system[system["video_time_s"] < args.end_s].reset_index(drop=True)
+    if args.ignore_type:
+        truth = truth.assign(vehicle_type="any")
+        system = system.assign(vehicle_type="any")
+
     tp, fn, fp = match_events(truth, system, args.tolerance)
+    srt = truth.sort_values("time_s")
+    same = srt.groupby(["direction", "vehicle_type"])["time_s"].diff()
+    n_close = int((same < 0.3).sum())
+    if n_close:
+        print(f"WARNING: {n_close} hand-count marks are within 0.3 s of another mark of the same "
+              "direction and type. These are often double presses. Check data/ground_truth.csv.\n")
     n_truth, n_sys = len(truth), len(system)
     precision = len(tp) / n_sys if n_sys else 0.0
     recall = len(tp) / n_truth if n_truth else 0.0
     count_error = abs(n_sys - n_truth) / n_truth * 100 if n_truth else float("nan")
 
-    print(f"Run: {run_id}   tolerance: {args.tolerance}s")
+    mode = "direction only" if args.ignore_type else "direction + vehicle type"
+    print(f"Run: {run_id}   tolerance: {args.tolerance}s   matching on: {mode}")
     print(f"Hand count: {n_truth}   System count: {n_sys}   Count error: {count_error:.1f}%")
     print(f"Correct (TP): {len(tp)}   Missed (FN): {len(fn)}   Extra (FP): {len(fp)}")
     print(f"Precision: {precision:.2f}   Recall: {recall:.2f}")

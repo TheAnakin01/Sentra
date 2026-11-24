@@ -14,11 +14,21 @@ st.title("Sentra: vehicle counts")
 TYPE_COLORS = {"car": "#2a7de1", "motorcycle": "#e8833a", "bus": "#3aa655", "truck": "#8e5bd0"}
 DIR_COLORS = {"toward": "#2a7de1", "away": "#e8833a"}
 
+SAMPLE_DB = "docs/sample.db"   # small committed sample so a deployed dashboard shows something
+
 conn = db.init()
 runs = db.list_runs(conn)
+using_sample = False
+if not runs and Path(SAMPLE_DB).exists():
+    conn.close()
+    conn = db.init(SAMPLE_DB)
+    runs = db.list_runs(conn)
+    using_sample = True
 if not runs:
     st.info("No data yet. Run `python count.py` first, then refresh this page.")
     st.stop()
+if using_sample:
+    st.caption("Showing the bundled sample run. Run `python count.py` to see your own data.")
 
 run_id = st.sidebar.selectbox("Run", [r["run_id"] for r in runs])
 bucket = st.sidebar.radio("Time buckets", ["second", "minute", "hour"], index=0)
@@ -30,7 +40,7 @@ df = pd.read_sql_query(
     params=(run_id,),
 )
 conn.close()
-df["ts"] = pd.to_datetime(df["ts"])
+df["ts"] = pd.to_datetime(df["ts"], format="ISO8601")
 
 # headline numbers
 c1, c2, c3 = st.columns(3)

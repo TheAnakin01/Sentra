@@ -5,14 +5,15 @@ from pathlib import Path
 DB_PATH = "data/sentra.db"
 
 
-def connect(path=DB_PATH):
+def connect(path=None):
+    path = path or DB_PATH
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def init(path=DB_PATH):
+def init(path=None):
     conn = connect(path)
     conn.execute(
         """

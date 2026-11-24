@@ -15,6 +15,7 @@ from PIL import Image
 from ultralytics import YOLO
 
 import db
+from counting import crossing_direction
 
 VEHICLES = [2, 3, 5, 7]  # COCO class ids: car, motorcycle, bus, truck
 
@@ -30,6 +31,8 @@ def parse_args():
                    help="confidence threshold (default: Ultralytics default)")
     p.add_argument("--imgsz", type=int, default=None,
                    help="inference size (default: Ultralytics default)")
+    p.add_argument("--start-s", type=float, default=0.0, help="start at this video time (seconds)")
+    p.add_argument("--end-s", type=float, default=None, help="stop at this video time (seconds)")
     p.add_argument("--show", action="store_true", help="show a live window")
     p.add_argument("--gif", default=None, help="save an annotated GIF here")
     p.add_argument("--gif-every", type=int, default=3, help="keep every Nth frame in the GIF")
@@ -60,10 +63,22 @@ def main():
     if args.imgsz is not None:
         track_kwargs["imgsz"] = args.imgsz
 
-    frame_idx = 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_idx = int(args.start_s * fps)
+    first_idx = frame_idx
+    if frame_idx:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    end_idx = int(args.end_s * fps) if args.end_s is not None else None
+
+    stopped_early = False
     while True:
+        if end_idx is not None and frame_idx >= end_idx:
+            break
         ok, frame = cap.read()
         if not ok:
+            # a failed read before the expected end usually means a damaged file
+            expected_end = end_idx if end_idx is not None else total_frames
+            stopped_early = frame_idx < expected_end - 5
             break
 
         h, w = frame.shape[:2]
@@ -86,17 +101,12 @@ def main():
                 cv2.polylines(annotated, [pts], False, (0, 255, 255), 4)
 
                 if track_id in last_y and track_id not in counted:
-                    prev = last_y[track_id]
-                    direction = None
-                    if prev < line_y <= y:
-                        direction = "toward"
-                    elif prev >= line_y > y:
-                        direction = "away"
+                    direction = crossing_direction(last_y[track_id], y, line_y)
                     if direction:
                         vtype = model.names[cls]
                         counts[(direction, vtype)] += 1
                         counted.add(track_id)
-                        ts = (start + timedelta(seconds=video_time)).isoformat()
+                        ts = (start + timedelta(seconds=video_time)).isoformat(timespec="microseconds")
                         db.insert_crossing(conn, run_id, ts, round(video_time, 2),
                                            track_id, direction, vtype)
                         conn.commit()
@@ -134,8 +144,12 @@ def main():
                            duration=int(1000 * args.gif_every / fps), loop=0)
         print(f"Saved GIF: {args.gif}")
 
-    print(f"{run_id}: {frame_idx} frames, total counted = {sum(counts.values())}")
+    print(f"{run_id}: frames {first_idx}-{frame_idx} "
+          f"({first_idx / fps:.1f}s-{frame_idx / fps:.1f}s), total counted = {sum(counts.values())}")
     print(dict(counts))
+    if stopped_early:
+        print(f"WARNING: the video stopped decoding at {frame_idx / fps:.1f}s, before the expected end. "
+              "The file may be damaged or incomplete. Counts only cover the part that decoded.")
 
 
 if __name__ == "__main__":
