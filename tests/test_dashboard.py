@@ -24,7 +24,7 @@ def test_dashboard_handles_timestamps_with_and_without_fractions(tmp_path, monke
 
     at = AppTest.from_file(str(tmp_path / "dashboard.py"), default_timeout=60).run()
     assert not at.exception
-    assert [m.value for m in at.metric][0] == "2"
+    assert any('kpi-v">2<' in m.value for m in at.markdown)
 
 
 def test_dashboard_without_any_data_shows_a_message(tmp_path, monkeypatch):
