@@ -2,6 +2,8 @@
 
 Real-time vehicle detection, tracking and counting from road video. Every vehicle that crosses a virtual line is counted once, split by direction and vehicle type, stored in SQLite, served by a small API and shown on a dashboard.
 
+**Live dashboard:** https://8h9qpsddvzhgtt6pw65key.streamlit.app/
+
 ![demo](docs/demo.gif)
 
 ## How it works
@@ -74,14 +76,20 @@ python evaluate.py --truth data/gt_test.csv --start-s 60 --end-s 140 --ignore-ty
 
 ## Results
 
-**Not yet measured.** The accuracy number must come from the hand-counted test window (60-140 s of `traffic2.mp4`). Fill in this table when you have it:
+Test window: 60-140 s of `traffic2.mp4` (80 s, busy two-way road seen from above), line at 60% of frame height, YOLO11 nano, default settings. Hand-counted before looking at the system output. Labeling rule: `car` = cars and vans, `truck` = lorries, `bus` = buses.
 
 | Matching on | Hand count | System count | Correct | Missed | Extra | Precision | Recall |
 |---|---|---|---|---|---|---|---|
-| direction only | | | | | | | |
-| direction + type | | | | | | | |
+| direction only | 76 | 85 | 75 | 1 | 10 | 0.88 | 0.99 |
+| direction + type | 76 | 85 | 69 | 7 | 16 | 0.81 | 0.91 |
 
-Dev window (0-60 s) sanity run, not an accuracy figure: 77 crossings counted (57 car, 16 truck, 4 bus, one of them wrongly counted as moving away). Several vans were labelled truck or bus, and one large lorry partly in view was counted as an "away" bus.
+Total count error: 11.8% (the system over-counts).
+
+What this means:
+- The system almost never misses a vehicle (recall 0.99).
+- Its main error is over-counting: some vehicles are counted twice, likely when their ID changes near the line (e.g. two "truck" crossings 0.03 s apart at 82 s and at 138.6 s).
+- Most type errors are vans labelled "truck", because the COCO classes have no van.
+- The hand count itself has some uncertainty: 12 marks are within 0.3 s of a same-type mark, which may be double presses or two cars side by side.
 
 ## Deploy the dashboard (Streamlit Community Cloud)
 
